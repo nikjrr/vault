@@ -1,0 +1,106 @@
+from machine import Pin
+from neopixel import NeoPixel
+import time
+import random
+
+# === NeoPixel Configuration ===
+STRIPS_CONFIG = [
+    (5, 10),     # Strip 1 on GPIO 5
+    (18, 6),     # Strip 2 on GPIO 18
+    (19, 12),    # Strip 3 on GPIO 19
+    (21, 16)     # Circular Ring on GPIO 21
+]
+
+# === Lava color palette ===
+lava_colors = [
+    (180, 100, 10),
+    (160, 80, 5),
+    (140, 60, 0),
+    (120, 50, 0),
+    (100, 40, 5),
+    (80, 30, 5),
+    (60, 20, 5),
+    (40, 10, 0)
+]
+
+# === LDR Setup ===
+LDR_PIN = 4
+ldr = Pin(LDR_PIN, Pin.IN)
+
+# === Setup NeoPixels ===
+strips = []
+for pin_num, count in STRIPS_CONFIG:
+    np = NeoPixel(Pin(pin_num), count)
+    strips.append({
+        "np": np,
+        "count": count,
+        "pin": pin_num,
+        "colors": [random.choice(lava_colors) for _ in range(count)]
+    })
+
+# === Light fade-in ===
+def activate_lights():
+    steps = 20
+    delay = 0.02
+    max_pixels = max([s["count"] for s in strips])
+
+    for i in range(max_pixels):
+        for level in range(steps + 1):
+            for strip in strips:
+                np = strip["np"]
+                colors = strip["colors"]
+                count = strip["count"]
+                pin = strip["pin"]
+
+                if pin == 21:
+                    left = i
+                    right = count - 1 - i
+                    for idx in (left, right):
+                        if 0 <= idx < count:
+                            r_t, g_t, b_t = colors[idx]
+                            r = int(r_t * level / steps)
+                            g = int(g_t * level / steps)
+                            b = int(b_t * level / steps)
+                            np[idx] = (r, g, b)
+                else:
+                    if i < count:
+                        r_t, g_t, b_t = colors[i]
+                        r = int(r_t * level / steps)
+                        g = int(g_t * level / steps)
+                        b = int(b_t * level / steps)
+                        np[i] = (r, g, b)
+            for strip in strips:
+                strip["np"].write()
+            time.sleep(delay)
+
+# === Flicker effect ===
+def flicker_loop():
+    while True:
+        for strip in strips:
+            for i in range(strip["count"]):
+                base_color = strip["colors"][i]
+                flicker_factor = random.uniform(0.6, 1.0)
+                r = int(base_color[0] * flicker_factor)
+                g = int(base_color[1] * flicker_factor)
+                b = int(base_color[2] * flicker_factor)
+                strip["np"][i] = (r, g, b)
+        for strip in strips:
+            strip["np"].write()
+        time.sleep(random.uniform(0.03, 0.1))
+
+# === Main loop ===
+print("🌘 Waiting for darkness to activate lava lights...")
+triggered = False
+
+while True:
+    if not triggered:
+        is_dark = ldr.value() == 1  # HIGH = dark if pull-down used
+        print("🕶️ LDR value:", ldr.value())
+
+        if is_dark:
+            print("🔥 Darkness detected — activating lights!")
+            activate_lights()
+            triggered = True
+            flicker_loop()
+
+    time.sleep(0.01)
